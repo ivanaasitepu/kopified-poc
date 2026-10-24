@@ -232,7 +232,9 @@ def arabica_pct(ce, cc, ratio):
     """Estimasi % Arabika dari model copy-number: Ce ∝ fraksi Arabika, Cc konstan → r = r₀/(1−f), jadi %Arabika = 100·r₀/r."""
     if ce == 0:
         return 0.0 if cc > 0 else None
-    if ratio != ratio or ratio <= 0:
+    if ratio == 0:  # Ce ada, Cc tidak terdeteksi sama sekali
+        return 100.0
+    if ratio != ratio or ratio < 0:
         return None
     return max(0.0, min(100.0, 100 * R0 / ratio))
 
@@ -291,6 +293,98 @@ def recommendations(a, o):
     if not r:
         r.append("Tidak diperlukan tindakan tambahan; arsipkan laporan bersama catatan lot.")
     return r
+
+# ================= qPCR (CSV) =================
+CT_POS = 30.0  # Ct < 30 = POSITIF; Ct ≥ 30, "Undetermined", atau kosong = NEGATIF
+QPCR_COLS = {  # nama kolom standar → alias yang lazim di ekspor mesin qPCR (dibandingkan tanpa spasi/underscore, huruf kecil)
+    "Sample_Name": ["samplename", "sample", "sampleid", "nama", "namasampel"],
+    "Target": ["target", "targetname", "detector", "assay", "gene", "marker"],
+    "Ct_Value": ["ctvalue", "ct", "cq", "cqvalue", "cqmean", "ctmean", "crt"],
+}
+
+def qpcr_columns(df):
+    """Petakan kolom file ke Sample_Name/Target/Ct_Value. Kembalikan (mapping, kolom_hilang)."""
+    norm = {str(c).strip().lower().replace(" ", "").replace("_", ""): c for c in df.columns}
+    found, missing = {}, []
+    for std, aliases in QPCR_COLS.items():
+        hit = next((norm[a] for a in aliases if a in norm), None)
+        if hit is None:
+            missing.append(std)
+        else:
+            found[std] = hit
+    return found, missing
+
+def qpcr_category(target):
+    """REF / M1-Ce / M1-Cc / OTA dari nama target (nama tipe langsung atau marker_id panel)."""
+    t = str(target).strip()
+    if t.upper() in ("REF", "M1-CE", "M1-CC"):
+        return {"REF": "REF", "M1-CE": "M1-Ce", "M1-CC": "M1-Cc"}[t.upper()]
+    if t.upper().startswith("OTA"):
+        return "OTA"
+    tmap = dict(zip(primers.marker_id, primers.type))
+    typ = tmap.get(t)
+    if typ is None:
+        return None
+    return "OTA" if typ.startswith("OTA") else typ
+
+def interpret_qpcr(df, cols):
+    """Tabel per sumur + ringkasan keputusan per sampel."""
+    w = pd.DataFrame({"Sample_Name": df[cols["Sample_Name"]].astype(str).str.strip(),
+                      "Target": df[cols["Target"]].astype(str).str.strip(),
+                      "Ct_Value": df[cols["Ct_Value"]]})
+    w["Ct"] = pd.to_numeric(w["Ct_Value"], errors="coerce")
+    w["Kategori"] = w["Target"].map(qpcr_category)
+    w["Status"] = w["Ct"].map(lambda c: "POSITIF" if c == c and c < CT_POS else "NEGATIF")
+    w["Dipakai"] = w["Kategori"].notna() & ~w["Target"].isin(RATIO_EXCLUDE)
+    out = []
+    for name, g in w[w["Dipakai"]].groupby("Sample_Name", sort=False):
+        pos = {k: bool((g.loc[g.Kategori == k, "Status"] == "POSITIF").any()) for k in ("REF", "M1-Ce", "M1-Cc", "OTA")}
+        ct = {k: g.loc[(g.Kategori == k) & (g.Status == "POSITIF"), "Ct"].mean() for k in ("M1-Ce", "M1-Cc")}
+        # rasio Cc/Ce setara dashboard FASTA: 2^(Ct_Ce − Ct_Cc), asumsi efisiensi 100%; Cc negatif → 0
+        ratio = (2 ** (ct["M1-Ce"] - ct["M1-Cc"]) if pos["M1-Cc"] else 0.0) if pos["M1-Ce"] else float("nan")
+        boxes = []
+        if not (pos["REF"] or pos["M1-Ce"] or pos["M1-Cc"]):
+            boxes.append(("info", "⚪ INVALID: DNA KOPI TIDAK TERDETEKSI", "REF, M1-Ce, dan M1-Cc seluruhnya negatif — ulangi ekstraksi."))
+        elif not pos["M1-Ce"]:
+            boxes.append(("error", "🚨 FLAG: BUKAN ARABIKA (ROBUSTA)",
+                          "M1-Ce negatif sementara M1-Cc positif — penanda subgenom eugenioides absen."))
+        elif ratio > THRESH:
+            boxes.append(("error", "🚨 FLAG: CAMPURAN ROBUSTA",
+                          f"Rasio Cc/Ce = 2^(Ct_Ce − Ct_Cc) = {ratio:.2f} melampaui ambang {THRESH:.2f}. "
+                          f"Estimasi kandungan Arabika {fmt_pct(arabica_pct(1, 1, ratio))} (indikatif)."))
+        elif pos["REF"]:
+            boxes.append(("success", "✅ ARABICA AUTHENTIC",
+                          "REF dan M1-Ce positif; " +
+                          (f"rasio Cc/Ce {ratio:.2f} ≤ ambang {THRESH:.2f}. " if pos["M1-Cc"] else "M1-Cc negatif. ") +
+                          f"Estimasi kandungan Arabika {fmt_pct(arabica_pct(1, 1, ratio))} (indikatif)."))
+        else:
+            boxes.append(("warning", "⚠️ PERIKSA ULANG: KONTROL REF NEGATIF",
+                          f"Penanda Arabika positif (rasio {ratio:.2f}) tetapi kontrol internal REF negatif — hasil belum valid."))
+        if pos["OTA"]:
+            hits = sorted(g.loc[(g.Kategori == "OTA") & (g.Status == "POSITIF"), "Target"].unique())
+            boxes.append(("error", "🚨 FLAG: KAPANG OTA TERDETEKSI",
+                          f"Target OTA positif: {', '.join(hits)}. Kirim lot untuk kuantifikasi okratoksin A (HPLC)."))
+        out.append(dict(sample=name, pos=pos, ct=ct, ratio=ratio, boxes=boxes))
+    return w, out
+
+def qpcr_report_text(fname, wells, summary):
+    lines = ["KopiFied — Laporan Interpretasi qPCR", f"Panel {PANEL_VERSION} · {datetime.now():%d-%m-%Y %H:%M:%S}",
+             f"File: {fname}", "",
+             f"Aturan: Ct < {CT_POS:g} = POSITIF; Ct ≥ {CT_POS:g} / Undetermined = NEGATIF.",
+             f"Rasio Cc/Ce = 2^(Ct_Ce − Ct_Cc), ambang {THRESH:.2f} (belum dikalibrasi qPCR). "
+             f"{', '.join(sorted(RATIO_EXCLUDE))} tidak dipakai.", ""]
+    for r in summary:
+        lines.append("=" * 60)
+        lines.append(f"Sampel: {r['sample']}")
+        lines.append("  " + " · ".join(f"{k}: {'POSITIF' if v else 'NEGATIF'}" for k, v in r["pos"].items()))
+        if r["ratio"] == r["ratio"]:
+            lines.append(f"  Rasio Cc/Ce: {r['ratio']:.2f}")
+        for _, title, desc in r["boxes"]:
+            lines += [f"  {title}", f"    {desc}"]
+        lines.append("")
+    lines += ["=" * 60, "Rincian per sumur:", wells.drop(columns=["Ct"]).to_string(index=False), "",
+              "Catatan: in-silico PoC (TRL 3); ambang Ct dan rasio belum divalidasi dengan kurva standar qPCR."]
+    return "\n".join(lines)
 
 PLOT_FONT = dict(family="Inter, sans-serif", color=C["ink"], size=12)
 
@@ -601,143 +695,190 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ================= RUN =================
-if run:
-    if up is not None and up.size > 20 * 1024 * 1024:
-        st.error("File terlalu besar (maks 20 MB). Untuk genom utuh, gunakan pipeline offline."); st.stop()
-    if up is None and idx is None:
-        st.error("Tidak ada sampel yang dipilih."); st.stop()
-    with st.spinner(f"Menjalankan panel {n_primers} marker…"):
-        t0 = time.time()
-        src = up if up else f"{SAMPLES}/{preset[idx]}"
-        label = getattr(up, "name", None) or preset[idx]
-        seqs = read_fasta(src)
-        hits = {p.marker_id: count_amplicons(seqs, p.fwd, p.rev, max_mm=MAX_MM) for _, p in primers.iterrows()}
-        dt = time.time() - t0
+tab_fa, tab_qpcr = st.tabs(["🧬 Data FASTA (in-silico)", "🧪 qPCR Data (CSV)"])
 
-    ce_ids = [m for m in primers.marker_id[primers.type == "M1-Ce"] if m not in RATIO_EXCLUDE]
-    cc_ids = [m for m in primers.marker_id[primers.type == "M1-Cc"] if m not in RATIO_EXCLUDE]
-    ce = sum(hits.get(m, 0) for m in ce_ids)
-    cc = sum(hits.get(m, 0) for m in cc_ids)
-    ref_rows = primers[primers.type == "REF"]
-    ref = sum(hits.get(m, 0) for m in ref_rows.marker_id)
-    ref_n = sum(1 for m in ref_rows.marker_id if hits.get(m, 0) > 0)
-    ota = {m: hits.get(m, 0) for m in primers.marker_id[primers.type.str.startswith("OTA")]}
-    n_ce = max(1, len(ce_ids)); n_cc = max(1, len(cc_ids))
-    ratio = (cc / n_cc) / (ce / n_ce) if ce else float("nan")
+with tab_fa:
+    # ================= RUN =================
+    if run:
+        if up is not None and up.size > 20 * 1024 * 1024:
+            st.error("File terlalu besar (maks 20 MB). Untuk genom utuh, gunakan pipeline offline."); st.stop()
+        if up is None and idx is None:
+            st.error("Tidak ada sampel yang dipilih."); st.stop()
+        with st.spinner(f"Menjalankan panel {n_primers} marker…"):
+            t0 = time.time()
+            src = up if up else f"{SAMPLES}/{preset[idx]}"
+            label = getattr(up, "name", None) or preset[idx]
+            seqs = read_fasta(src)
+            hits = {p.marker_id: count_amplicons(seqs, p.fwd, p.rev, max_mm=MAX_MM) for _, p in primers.iterrows()}
+            dt = time.time() - t0
 
-    auth = classify_auth(ce, cc, ref, ratio)
-    ota_call = classify_ota(ota)
-    tmap = primers.set_index("marker_id")["type"]
-    det = pd.DataFrame([{"Marker": mk, "Tipe": tmap.loc[mk], "Fungsi": type_desc(tmap.loc[mk]), "Amplikon": int(n)}
-                        for mk, n in hits.items()])
-    h = hashlib.sha256()
-    for s in seqs: h.update(s.encode())
-    now = datetime.now()
-    st.session_state["res"] = dict(
-        label=label, desc=LABELS.get(label, ("Unggahan pengguna", "—", "—"))[0] if not up else "Unggahan pengguna",
-        n_seq=len(seqs), n_bp=sum(map(len, seqs)), dt=dt, sha=h.hexdigest()[:32],
-        ce=ce, cc=cc, ref=ref, ref_n=ref_n, ref_total=len(ref_rows), ota=ota, ratio=ratio, ara_pct=arabica_pct(ce, cc, ratio),
-        n_ce=n_ce, n_cc=n_cc, auth=auth, ota_call=ota_call, overall=overall_call(auth, ota_call),
-        recs=recommendations(auth, ota_call), det=det,
-        ts=now.strftime("%d-%m-%Y %H:%M:%S"), report_id=f"KPF-{now:%Y%m%d-%H%M%S}")
+        ce_ids = [m for m in primers.marker_id[primers.type == "M1-Ce"] if m not in RATIO_EXCLUDE]
+        cc_ids = [m for m in primers.marker_id[primers.type == "M1-Cc"] if m not in RATIO_EXCLUDE]
+        ce = sum(hits.get(m, 0) for m in ce_ids)
+        cc = sum(hits.get(m, 0) for m in cc_ids)
+        ref_rows = primers[primers.type == "REF"]
+        ref = sum(hits.get(m, 0) for m in ref_rows.marker_id)
+        ref_n = sum(1 for m in ref_rows.marker_id if hits.get(m, 0) > 0)
+        ota = {m: hits.get(m, 0) for m in primers.marker_id[primers.type.str.startswith("OTA")]}
+        n_ce = max(1, len(ce_ids)); n_cc = max(1, len(cc_ids))
+        ratio = (cc / n_cc) / (ce / n_ce) if ce else float("nan")
 
-res = st.session_state.get("res")
+        auth = classify_auth(ce, cc, ref, ratio)
+        ota_call = classify_ota(ota)
+        tmap = primers.set_index("marker_id")["type"]
+        det = pd.DataFrame([{"Marker": mk, "Tipe": tmap.loc[mk], "Fungsi": type_desc(tmap.loc[mk]), "Amplikon": int(n)}
+                            for mk, n in hits.items()])
+        h = hashlib.sha256()
+        for s in seqs: h.update(s.encode())
+        now = datetime.now()
+        st.session_state["res"] = dict(
+            label=label, desc=LABELS.get(label, ("Unggahan pengguna", "—", "—"))[0] if not up else "Unggahan pengguna",
+            n_seq=len(seqs), n_bp=sum(map(len, seqs)), dt=dt, sha=h.hexdigest()[:32],
+            ce=ce, cc=cc, ref=ref, ref_n=ref_n, ref_total=len(ref_rows), ota=ota, ratio=ratio, ara_pct=arabica_pct(ce, cc, ratio),
+            n_ce=n_ce, n_cc=n_cc, auth=auth, ota_call=ota_call, overall=overall_call(auth, ota_call),
+            recs=recommendations(auth, ota_call), det=det,
+            ts=now.strftime("%d-%m-%Y %H:%M:%S"), report_id=f"KPF-{now:%Y%m%d-%H%M%S}")
 
-if res is None:
-    # ---------- Empty state ----------
-    st.markdown("<div class='sec'><span class='n'>00</span><span class='t'>Mulai analisis</span>"
-                "<span class='s'>Pilih sampel di panel kiri lalu jalankan</span></div>", unsafe_allow_html=True)
-    s1, s2, s3 = st.columns(3)
-    for col, n, t, d in [
-        (s1, "01", "Muat data sampel", "Pilih sampel demo atau unggah file ekspor/FASTA hasil sekuensing atau amplifikasi."),
-        (s2, "02", "Jalankan panel 16 marker", "In-silico PCR menghitung amplikon untuk penanda subgenom, kontrol internal, dan gen OTA."),
-        (s3, "03", "Tinjau keputusan & laporan", "Dapatkan status LOLOS / TIDAK LOLOS beserta laporan QA siap cetak yang dapat ditelusuri.")]:
-        col.markdown(f"<div class='step'><div class='n'>{n}</div><div class='t'>{t}</div><div class='d'>{d}</div></div>",
-                     unsafe_allow_html=True)
-else:
-    r = res
-    a, o, ov = r["auth"], r["ota_call"], r["overall"]
-    ratio = r["ratio"]
+    res = st.session_state.get("res")
 
-    # ---------- Ringkasan ----------
-    st.markdown(f"""
-    <div class='meta-strip'>
-      <div><div class='l'>Sampel</div><div class='v mono'>{esc(r['label'])}</div></div>
-      <div><div class='l'>Deskripsi</div><div class='v'>{esc(r['desc'])}</div></div>
-      <div><div class='l'>Fragmen</div><div class='v mono'>{fmt_int(r['n_seq'])}</div></div>
-      <div><div class='l'>Waktu analisis</div><div class='v mono'>{r['dt']:.2f} s</div></div>
-      <div><div class='l'>No. laporan</div><div class='v mono'>{r['report_id']}</div></div>
-    </div>""", unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class='overall o-{ov['code']}'>
-      <div><div class='k'>Kesimpulan keseluruhan</div><div class='v'>{ov['title']}</div><div class='d'>{ov['desc']}</div></div>
-      <div class='meta'>Panel {PANEL_VERSION}<br>{r['ts']}<br>SHA {r['sha'][:12]}…</div>
-    </div>""", unsafe_allow_html=True)
-
-    st.write("")
-    c1, c2 = st.columns(2)
-    for col, mod, c in [(c1, "Modul 1 · Autentikasi Arabika", a), (c2, "Modul 2 · Risiko kapang OTA", o)]:
-        col.markdown(f"<div class='status s-{c['code']}'><span class='tag'>{c['tag']}</span><div>"
-                     f"<div class='m'>{mod}</div><div class='t'>{c['title']}</div><div class='d'>{c['desc']}</div></div></div>",
-                     unsafe_allow_html=True)
-
-    # ---------- Modul 1 ----------
-    st.markdown("<div class='sec'><span class='n'>01</span><span class='t'>Autentikasi Arabika</span>"
-                "<span class='s'>Rasio penanda subgenom C. canephora / C. eugenioides</span></div>", unsafe_allow_html=True)
-    k = st.columns(5)
-    for col, l, v, s in [(k[0], "Estimasi Arabika", fmt_pct(r.get("ara_pct")), "100·r₀/rasio · indikatif"),
-                         (k[1], "M1-Ce", r["ce"], "bukti subgenom Arabika"),
-                         (k[2], "M1-Cc", r["cc"], "sinyal subgenom canephora"),
-                         (k[3], "REF", r["ref"], f"{r['ref_n']}/{r['ref_total']} lokus kontrol"),
-                         (k[4], "Rasio Cc/Ce", f"{ratio:.2f}" if ratio == ratio else "—", f"ambang {THRESH:.2f}")]:
-        col.markdown(f"<div class='kpi accent'><div class='l'>{l}</div><div class='v'>{v}</div><div class='s'>{s}</div></div>",
-                     unsafe_allow_html=True)
-    if sim is not None:
-        g1, g2 = st.columns([1, 1.5])
-        with g1:
-            st.plotly_chart(ratio_gauge(ratio), use_container_width=True, config={"displayModeBar": False})
-        with g2:
-            st.plotly_chart(sim_chart(ratio), use_container_width=True, config={"displayModeBar": False})
-    st.markdown("<div class='note'>Rasio, ambang, dan estimasi % Arabika berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> "
-                "dengan sampel fisik — proporsi dihitung per genom (bukan % berat), bersifat indikatif, bukan klaim batas deteksi "
-                f"atau kuantifikasi. Di atas {ARA_CAP}% selisih rasio terlalu kecil untuk dibedakan.</div>",
-                unsafe_allow_html=True)
-
-    # ---------- Modul 2 ----------
-    st.markdown("<div class='sec'><span class='n'>02</span><span class='t'>Risiko kapang OTA</span>"
-                "<span class='s'>Deteksi gen biosintesis okratoksin A</span></div>", unsafe_allow_html=True)
-    if r["ota"]:
-        oc = st.columns(len(r["ota"]))
-        for col, (mk, n) in zip(oc, r["ota"].items()):
-            pos = n > 0
-            col.markdown(f"<div class='ota-chip'><div><div class='name'>{esc(mk)}</div><div class='sub'>{n} amplikon</div></div>"
-                         f"<span class='pill {'pos' if pos else 'neg'}'>{'POSITIF' if pos else 'NEGATIF'}</span></div>",
+    if res is None:
+        # ---------- Empty state ----------
+        st.markdown("<div class='sec'><span class='n'>00</span><span class='t'>Mulai analisis</span>"
+                    "<span class='s'>Pilih sampel di panel kiri lalu jalankan</span></div>", unsafe_allow_html=True)
+        s1, s2, s3 = st.columns(3)
+        for col, n, t, d in [
+            (s1, "01", "Muat data sampel", "Pilih sampel demo atau unggah file ekspor/FASTA hasil sekuensing atau amplifikasi."),
+            (s2, "02", "Jalankan panel 16 marker", "In-silico PCR menghitung amplikon untuk penanda subgenom, kontrol internal, dan gen OTA."),
+            (s3, "03", "Tinjau keputusan & laporan", "Dapatkan status LOLOS / TIDAK LOLOS beserta laporan QA siap cetak yang dapat ditelusuri.")]:
+            col.markdown(f"<div class='step'><div class='n'>{n}</div><div class='t'>{t}</div><div class='d'>{d}</div></div>",
                          unsafe_allow_html=True)
-    st.markdown("<div class='note'>Skrining <b>risiko</b> berbasis DNA kapang — bukan pengukuran kadar toksin. "
-                "Hasil positif harus dikonfirmasi dengan kuantifikasi OTA (HPLC).</div>", unsafe_allow_html=True)
+    else:
+        r = res
+        a, o, ov = r["auth"], r["ota_call"], r["overall"]
+        ratio = r["ratio"]
 
-    # ---------- Rekomendasi & rincian ----------
-    st.markdown("<div class='sec'><span class='n'>03</span><span class='t'>Rekomendasi &amp; rincian marker</span></div>",
-                unsafe_allow_html=True)
-    d1, d2 = st.columns([1, 1.3])
-    with d1:
-        st.markdown("<div class='rec'><b>Tindak lanjut yang disarankan</b><ul>" +
-                    "".join(f"<li>{esc(x)}</li>" for x in r["recs"]) + "</ul></div>", unsafe_allow_html=True)
+        # ---------- Ringkasan ----------
+        st.markdown(f"""
+        <div class='meta-strip'>
+          <div><div class='l'>Sampel</div><div class='v mono'>{esc(r['label'])}</div></div>
+          <div><div class='l'>Deskripsi</div><div class='v'>{esc(r['desc'])}</div></div>
+          <div><div class='l'>Fragmen</div><div class='v mono'>{fmt_int(r['n_seq'])}</div></div>
+          <div><div class='l'>Waktu analisis</div><div class='v mono'>{r['dt']:.2f} s</div></div>
+          <div><div class='l'>No. laporan</div><div class='v mono'>{r['report_id']}</div></div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class='overall o-{ov['code']}'>
+          <div><div class='k'>Kesimpulan keseluruhan</div><div class='v'>{ov['title']}</div><div class='d'>{ov['desc']}</div></div>
+          <div class='meta'>Panel {PANEL_VERSION}<br>{r['ts']}<br>SHA {r['sha'][:12]}…</div>
+        </div>""", unsafe_allow_html=True)
+
         st.write("")
-        st.download_button("Unduh Laporan QA (HTML · siap cetak PDF)", build_report(r),
-                           file_name=f"KopiFied_QA_{r['label'].rsplit('.', 1)[0]}_{r['report_id']}.html",
-                           mime="text/html", use_container_width=True)
-        st.download_button("Unduh data per marker (CSV)", r["det"].to_csv(index=False),
-                           file_name=f"KopiFied_markers_{r['report_id']}.csv", mime="text/csv",
-                           use_container_width=True)
-    with d2:
-        st.plotly_chart(marker_chart(r["det"]), use_container_width=True, config={"displayModeBar": False})
-    with st.expander("Tabel rincian per marker"):
-        st.dataframe(r["det"], hide_index=True, use_container_width=True,
-                     column_config={"Amplikon": st.column_config.ProgressColumn(
-                         "Amplikon", format="%d", min_value=0, max_value=max(1, int(r["det"]["Amplikon"].max())))})
+        c1, c2 = st.columns(2)
+        for col, mod, c in [(c1, "Modul 1 · Autentikasi Arabika", a), (c2, "Modul 2 · Risiko kapang OTA", o)]:
+            col.markdown(f"<div class='status s-{c['code']}'><span class='tag'>{c['tag']}</span><div>"
+                         f"<div class='m'>{mod}</div><div class='t'>{c['title']}</div><div class='d'>{c['desc']}</div></div></div>",
+                         unsafe_allow_html=True)
+
+        # ---------- Modul 1 ----------
+        st.markdown("<div class='sec'><span class='n'>01</span><span class='t'>Autentikasi Arabika</span>"
+                    "<span class='s'>Rasio penanda subgenom C. canephora / C. eugenioides</span></div>", unsafe_allow_html=True)
+        k = st.columns(5)
+        for col, l, v, s in [(k[0], "Estimasi Arabika", fmt_pct(r.get("ara_pct")), "100·r₀/rasio · indikatif"),
+                             (k[1], "M1-Ce", r["ce"], "bukti subgenom Arabika"),
+                             (k[2], "M1-Cc", r["cc"], "sinyal subgenom canephora"),
+                             (k[3], "REF", r["ref"], f"{r['ref_n']}/{r['ref_total']} lokus kontrol"),
+                             (k[4], "Rasio Cc/Ce", f"{ratio:.2f}" if ratio == ratio else "—", f"ambang {THRESH:.2f}")]:
+            col.markdown(f"<div class='kpi accent'><div class='l'>{l}</div><div class='v'>{v}</div><div class='s'>{s}</div></div>",
+                         unsafe_allow_html=True)
+        if sim is not None:
+            g1, g2 = st.columns([1, 1.5])
+            with g1:
+                st.plotly_chart(ratio_gauge(ratio), use_container_width=True, config={"displayModeBar": False})
+            with g2:
+                st.plotly_chart(sim_chart(ratio), use_container_width=True, config={"displayModeBar": False})
+        st.markdown("<div class='note'>Rasio, ambang, dan estimasi % Arabika berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> "
+                    "dengan sampel fisik — proporsi dihitung per genom (bukan % berat), bersifat indikatif, bukan klaim batas deteksi "
+                    f"atau kuantifikasi. Di atas {ARA_CAP}% selisih rasio terlalu kecil untuk dibedakan.</div>",
+                    unsafe_allow_html=True)
+
+        # ---------- Modul 2 ----------
+        st.markdown("<div class='sec'><span class='n'>02</span><span class='t'>Risiko kapang OTA</span>"
+                    "<span class='s'>Deteksi gen biosintesis okratoksin A</span></div>", unsafe_allow_html=True)
+        if r["ota"]:
+            oc = st.columns(len(r["ota"]))
+            for col, (mk, n) in zip(oc, r["ota"].items()):
+                pos = n > 0
+                col.markdown(f"<div class='ota-chip'><div><div class='name'>{esc(mk)}</div><div class='sub'>{n} amplikon</div></div>"
+                             f"<span class='pill {'pos' if pos else 'neg'}'>{'POSITIF' if pos else 'NEGATIF'}</span></div>",
+                             unsafe_allow_html=True)
+        st.markdown("<div class='note'>Skrining <b>risiko</b> berbasis DNA kapang — bukan pengukuran kadar toksin. "
+                    "Hasil positif harus dikonfirmasi dengan kuantifikasi OTA (HPLC).</div>", unsafe_allow_html=True)
+
+        # ---------- Rekomendasi & rincian ----------
+        st.markdown("<div class='sec'><span class='n'>03</span><span class='t'>Rekomendasi &amp; rincian marker</span></div>",
+                    unsafe_allow_html=True)
+        d1, d2 = st.columns([1, 1.3])
+        with d1:
+            st.markdown("<div class='rec'><b>Tindak lanjut yang disarankan</b><ul>" +
+                        "".join(f"<li>{esc(x)}</li>" for x in r["recs"]) + "</ul></div>", unsafe_allow_html=True)
+            st.write("")
+            st.download_button("Unduh Laporan QA (HTML · siap cetak PDF)", build_report(r),
+                               file_name=f"KopiFied_QA_{r['label'].rsplit('.', 1)[0]}_{r['report_id']}.html",
+                               mime="text/html", use_container_width=True)
+            st.download_button("Unduh data per marker (CSV)", r["det"].to_csv(index=False),
+                               file_name=f"KopiFied_markers_{r['report_id']}.csv", mime="text/csv",
+                               use_container_width=True)
+        with d2:
+            st.plotly_chart(marker_chart(r["det"]), use_container_width=True, config={"displayModeBar": False})
+        with st.expander("Tabel rincian per marker"):
+            st.dataframe(r["det"], hide_index=True, use_container_width=True,
+                         column_config={"Amplikon": st.column_config.ProgressColumn(
+                             "Amplikon", format="%d", min_value=0, max_value=max(1, int(r["det"]["Amplikon"].max())))})
+
+# ================= TAB qPCR =================
+with tab_qpcr:
+    st.markdown("<div class='sec'><span class='n'>Q</span><span class='t'>Interpretasi data ekspor qPCR</span>"
+                "<span class='s'>Kolom: Sample_Name, Target, Ct_Value</span></div>", unsafe_allow_html=True)
+    st.caption(f"Ct < {CT_POS:g} = POSITIF; Ct ≥ {CT_POS:g}, \"Undetermined\", atau kosong = NEGATIF. Target boleh berupa "
+               "REF / M1-Ce / M1-Cc / OTA, atau marker_id panel (mis. A1_0397, Cc_0055, OTA-D-1). Replikat: positif bila "
+               "salah satu sumur positif; Ct rata-rata sumur positif dipakai untuk rasio Cc/Ce.")
+    qf = st.file_uploader("Unggah file ekspor qPCR", type=["csv", "tsv", "txt"], key="qpcr_up")
+    if qf is not None:
+        try:
+            qdf = pd.read_csv(qf, sep=None, engine="python")
+        except Exception as e:
+            st.error(f"File tidak dapat dibaca sebagai CSV/TSV: {e}"); qdf = None
+        if qdf is not None:
+            qcols, qmiss = qpcr_columns(qdf)
+            if qmiss:
+                st.error(f"Kolom wajib tidak ditemukan: {', '.join(qmiss)}. Kolom di file: {', '.join(map(str, qdf.columns))}. "
+                         "Ganti nama kolom menjadi Sample_Name, Target, Ct_Value.")
+            else:
+                renamed = {k: v for k, v in qcols.items() if str(v) != k}
+                if renamed:
+                    st.info("Nama kolom berbeda, dipetakan otomatis: " +
+                            ", ".join(f"'{v}' → {k}" for k, v in renamed.items()))
+                wells, summary = interpret_qpcr(qdf, qcols)
+                unknown = sorted(wells.loc[wells.Kategori.isna(), "Target"].unique())
+                if unknown:
+                    st.warning(f"Target tidak dikenali dan diabaikan: {', '.join(unknown)}.")
+                if not summary:
+                    st.error("Tidak ada baris dengan target yang dikenali.")
+                for r in summary:
+                    st.markdown(f"**Sampel: {esc(r['sample'])}**" +
+                                (f" · rasio Cc/Ce `{r['ratio']:.2f}`" if r["ratio"] == r["ratio"] else ""))
+                    for kind, title, desc in r["boxes"]:
+                        getattr(st, kind)(f"**{title}**  \n{desc}")
+                with st.expander("Tabel interpretasi per sumur", expanded=False):
+                    st.dataframe(wells.drop(columns=["Ct"]), hide_index=True, use_container_width=True)
+                if summary:
+                    st.download_button("Unduh laporan interpretasi qPCR (TXT)",
+                                       qpcr_report_text(qf.name, wells, summary),
+                                       file_name=f"KopiFied_qPCR_{datetime.now():%Y%m%d-%H%M%S}.txt",
+                                       mime="text/plain", use_container_width=True)
+    st.markdown("<div class='note'>Ambang Ct dan rasio Cc/Ce untuk qPCR <b>belum dikalibrasi</b> dengan kurva standar — "
+                "rasio diturunkan dengan asumsi efisiensi amplifikasi 100% untuk semua target.</div>", unsafe_allow_html=True)
 
 # ================= TABS BUKTI =================
 st.markdown("<div class='sec'><span class='n'>◆</span><span class='t'>Bukti ilmiah &amp; dokumentasi panel</span></div>",
