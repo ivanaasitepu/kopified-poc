@@ -18,6 +18,13 @@ sys.path.insert(0, f"{BASE}/dashboard")
 from insilico import count_amplicons
 
 PANEL_VERSION = "v0.1"
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "kopified_logo.png")
+def logo_b64():
+    import base64 as _b64
+    if os.path.exists(LOGO_PATH):
+        return "data:image/png;base64," + _b64.b64encode(open(LOGO_PATH, "rb").read()).decode()
+    return ""
+LOGO = logo_b64()
 MAX_MM, MIN_AMP, MAX_AMP = 2, 50, 1000
 
 # ---------- Palet (dipakai juga oleh grafik & laporan) ----------
@@ -185,8 +192,8 @@ def esc(s):
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    st.markdown("<div class='brand'>☕ KopiFied</div><div class='brand-sub'>Decision Support · Panel "
-                f"{PANEL_VERSION}</div>", unsafe_allow_html=True)
+    st.markdown((f"<img src='{LOGO}' style='max-width:150px; margin-bottom:4px;'>" if LOGO else "") +
+                f"<div class='brand-sub'>Decision Support · Panel {PANEL_VERSION}</div>", unsafe_allow_html=True)
     st.markdown("<h5>Sampel uji</h5>", unsafe_allow_html=True)
     preset = [f for f in sorted(os.listdir(SAMPLES)) if f.endswith(".fa")] if os.path.isdir(SAMPLES) else []
     disp = [LABELS.get(f, (f,))[0] for f in preset]
@@ -585,7 +592,7 @@ st.markdown(f"""
       <span class="chip warn">In-silico PoC — belum dikalibrasi lab</span>
     </div>
   </div>
-  <div class="hero-stats">
+  <div class="hero-stats"><div class="hs" style="grid-column:1/3; background:#fff; display:flex; align-items:center; justify-content:center; padding:10px 14px;"><img src='{LOGO}' style='max-width:100%; height:56px; object-fit:contain;'></div>
     <div class="hs"><div class="v">{n_primers}</div><div class="l">Primer dalam panel</div></div>
     <div class="hs"><div class="v">25</div><div class="l">Genom publik tervalidasi</div></div>
     <div class="hs"><div class="v">2</div><div class="l">Modul uji sekaligus</div></div>
