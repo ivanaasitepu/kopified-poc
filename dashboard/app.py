@@ -505,6 +505,7 @@ def build_report(r):
     <tr><td>Sidik jari data (SHA-256)</td><td class="mono">{esc(r['sha'])}</td></tr>
     <tr><td>Parameter in-silico PCR</td><td>Anchor 3′ 12-mer · maks. {MAX_MM} mismatch per primer · 3 basa ujung 3′ wajib cocok · amplikon {MIN_AMP}–{MAX_AMP} bp</td></tr>
     <tr><td>Waktu analisis</td><td class="mono">{r['dt']:.2f} detik</td></tr>
+    {f"<tr><td>Estimasi indikatif komposisi</td><td>≈ <b>{100-xp:.0f}% Arabika</b> / {xp:.0f}% Robusta <i>(interpolasi kurva simulasi; belum dikalibrasi)</i></td></tr>" if xp is not None else ""}
   </table></section>
 
   <section><h2><span class="n">02</span>Modul 1 — Autentikasi Arabika</h2>
@@ -668,6 +669,11 @@ else:
             st.plotly_chart(ratio_gauge(ratio), use_container_width=True, config={"displayModeBar": False})
         with g2:
             st.plotly_chart(sim_chart(ratio), use_container_width=True, config={"displayModeBar": False})
+    xp_est = sim_position(ratio)
+    if xp_est is not None:
+        st.markdown(f"<div class='note'>📐 <b>Estimasi indikatif komposisi:</b> ≈ <b>{100-xp_est:.0f}% Arabika</b> / "
+                    f"{xp_est:.0f}% Robusta — dihitung dari kurva simulasi (belum dikalibrasi, bukan estimasi kuantitatif tervalidasi).</div>",
+                    unsafe_allow_html=True)
     st.markdown("<div class='note'>Rasio &amp; ambang berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> "
                 "dengan sampel fisik — posisi pada kurva bersifat indikatif, bukan klaim batas deteksi atau kuantifikasi.</div>",
                 unsafe_allow_html=True)
