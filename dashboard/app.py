@@ -150,12 +150,13 @@ if not os.path.exists(PANEL):
     st.warning("Panel primer belum tersedia."); st.stop()
 primers = pd.read_csv(PANEL, sep="\t")
 
-sim, THRESH = None, 1.6
+sim, THRESH, R0 = None, 1.6, 1.0
 if os.path.exists(f"{RES}/blend_simulation.tsv"):
     sim = pd.read_csv(f"{RES}/blend_simulation.tsv", sep="\t")
-    r0 = float(sim.loc[sim.robusta_pct == 0, "ratio_Cc_Ce"].iloc[0])
+    R0 = float(sim.loc[sim.robusta_pct == 0, "ratio_Cc_Ce"].iloc[0])
     r25 = float(sim.loc[sim.robusta_pct == 25, "ratio_Cc_Ce"].iloc[0])
-    THRESH = r0 + (r25 - r0) * 0.3
+    THRESH = R0 + (r25 - R0) * 0.3
+ARA_CAP = 95  # di atas ini selisih rasio terlalu kecil untuk dibedakan — tampilkan sebagai "≥95%"
 
 LABELS = {
     "arabica_caturra.fa": ("Arabika Gayo — sampel pasar", "Arabika murni", "AUTHENTIC"),
@@ -217,6 +218,19 @@ def read_fasta(src):
     if buf: seqs.append("".join(buf).upper())
     return seqs
 
+def arabica_pct(ce, cc, ratio):
+    """Estimasi % Arabika dari model copy-number: Ce ∝ fraksi Arabika, Cc konstan → r = r₀/(1−f), jadi %Arabika = 100·r₀/r."""
+    if ce == 0:
+        return 0.0 if cc > 0 else None
+    if ratio != ratio or ratio <= 0:
+        return None
+    return max(0.0, min(100.0, 100 * R0 / ratio))
+
+def fmt_pct(p):
+    if p is None:
+        return "—"
+    return f"≥{ARA_CAP}%" if p >= ARA_CAP else f"≈{p:.0f}%"
+
 def classify_auth(ce, cc, ref, ratio):
     if ref == 0 and ce == 0 and cc == 0:
         return dict(code="invalid", tag="INVALID", title="DNA kopi tidak terdeteksi",
@@ -226,9 +240,11 @@ def classify_auth(ce, cc, ref, ratio):
                     desc="Penanda subgenom C. eugenioides tidak terdeteksi, padahal Arabika (alotetraploid) selalu membawanya.")
     if ratio == ratio and ratio > THRESH:
         return dict(code="warn", tag="FLAG", title="Indikasi campuran Robusta",
-                    desc=f"Rasio Cc/Ce {ratio:.2f} melampaui ambang {THRESH:.2f} — kelebihan sinyal subgenom canephora.")
+                    desc=f"Rasio Cc/Ce {ratio:.2f} melampaui ambang {THRESH:.2f} — kelebihan sinyal subgenom canephora. "
+                         f"Estimasi kandungan Arabika {fmt_pct(arabica_pct(ce, cc, ratio))} (indikatif).")
     return dict(code="ok", tag="PASS", title="Arabika autentik",
-                desc=f"Penanda Arabika terdeteksi dan rasio Cc/Ce {ratio:.2f} berada di bawah ambang {THRESH:.2f}.")
+                desc=f"Penanda Arabika terdeteksi dan rasio Cc/Ce {ratio:.2f} berada di bawah ambang {THRESH:.2f}. "
+                     f"Estimasi kandungan Arabika {fmt_pct(arabica_pct(ce, cc, ratio))} (indikatif).")
 
 def classify_ota(ota):
     pos = [m for m, n in ota.items() if n > 0]
@@ -462,7 +478,7 @@ def build_report(r):
   .tag {{ color:#fff; font-size:9.5px; font-weight:800; letter-spacing:1px; padding:3px 7px; border-radius:4px; }}
   .res-t {{ font-weight:700; font-size:13.5px; }}
   .res-d {{ font-size:11.5px; color:{C['ink2']}; margin-top:4px; }}
-  .kpis {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:6px 0 12px; }}
+  .kpis {{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:6px 0 12px; }}
   .kpi {{ border:1px solid {C['line']}; border-radius:10px; padding:10px 12px; }}
   .kpi .l {{ font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:{C['muted']}; font-weight:800; }}
   .kpi .v {{ font-family:'JetBrains Mono', monospace; font-size:20px; font-weight:700; }}
@@ -509,6 +525,7 @@ def build_report(r):
 
   <section><h2><span class="n">02</span>Modul 1 — Autentikasi Arabika</h2>
   <div class="kpis">
+    <div class="kpi"><div class="l">Estimasi Arabika</div><div class="v">{fmt_pct(r.get('ara_pct'))}</div><div class="s">100·r₀/rasio · indikatif</div></div>
     <div class="kpi"><div class="l">M1-Ce</div><div class="v">{r['ce']}</div><div class="s">bukti subgenom Arabika</div></div>
     <div class="kpi"><div class="l">M1-Cc</div><div class="v">{r['cc']}</div><div class="s">sinyal subgenom canephora</div></div>
     <div class="kpi"><div class="l">REF</div><div class="v">{r['ref']}</div><div class="s">{r['ref_n']}/{r['ref_total']} lokus kontrol</div></div>
@@ -540,10 +557,11 @@ def build_report(r):
     <li><b>Bukan Arabika</b> — M1-Ce = 0.</li>
     <li><b>Indikasi campuran Robusta</b> — rasio Cc/Ce &gt; {THRESH:.2f} (r₀ + 0,3·(r₂₅ − r₀) dari kurva simulasi).</li>
     <li><b>Risiko OTA</b> — ≥2 marker OTA positif = FLAG; tepat 1 marker = CHECK (periksa ulang).</li>
+    <li><b>Estimasi % Arabika</b> — 100 · r₀ / rasio Cc/Ce (r₀ = {R0:.2f}, rasio Arabika murni pada kurva simulasi); nilai ≥{ARA_CAP}% dilaporkan sebagai "≥{ARA_CAP}%". Indikatif, per genom (bukan % berat).</li>
   </ul></section>
 
   <section><h2><span class="n">08</span>Batasan</h2>
-  <div class="disc">Hasil ini merupakan <b>in-silico proof of concept (TRL 3)</b>. Rasio dan ambang berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> dengan sampel fisik dan tidak merupakan klaim batas deteksi. Keputusan rilis/penolakan lot memerlukan validasi laboratorium (qPCR terkalibrasi, HPLC untuk OTA).</div>
+  <div class="disc">Hasil ini merupakan <b>in-silico proof of concept (TRL 3)</b>. Rasio, ambang, dan estimasi % Arabika berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> dengan sampel fisik dan tidak merupakan klaim batas deteksi. Keputusan rilis/penolakan lot memerlukan validasi laboratorium (qPCR terkalibrasi, HPLC untuk OTA).</div>
   <div class="sign"><div>Dianalisis oleh</div><div>Ditinjau oleh</div><div>Tanggal &amp; paraf</div></div></section>
 </main>
 <footer><span>KopiFied {PANEL_VERSION} · Tim Kimpulita · GenoHack 2026</span><span class="mono">{esc(r['report_id'])}</span></footer>
@@ -606,7 +624,7 @@ if run:
     st.session_state["res"] = dict(
         label=label, desc=LABELS.get(label, ("Unggahan pengguna", "—", "—"))[0] if not up else "Unggahan pengguna",
         n_seq=len(seqs), n_bp=sum(map(len, seqs)), dt=dt, sha=h.hexdigest()[:32],
-        ce=ce, cc=cc, ref=ref, ref_n=ref_n, ref_total=len(ref_rows), ota=ota, ratio=ratio,
+        ce=ce, cc=cc, ref=ref, ref_n=ref_n, ref_total=len(ref_rows), ota=ota, ratio=ratio, ara_pct=arabica_pct(ce, cc, ratio),
         n_ce=n_ce, n_cc=n_cc, auth=auth, ota_call=ota_call, overall=overall_call(auth, ota_call),
         recs=recommendations(auth, ota_call), det=det,
         ts=now.strftime("%d-%m-%Y %H:%M:%S"), report_id=f"KPF-{now:%Y%m%d-%H%M%S}")
@@ -655,11 +673,12 @@ else:
     # ---------- Modul 1 ----------
     st.markdown("<div class='sec'><span class='n'>01</span><span class='t'>Autentikasi Arabika</span>"
                 "<span class='s'>Rasio penanda subgenom C. canephora / C. eugenioides</span></div>", unsafe_allow_html=True)
-    k = st.columns(4)
-    for col, l, v, s in [(k[0], "M1-Ce", r["ce"], "bukti subgenom Arabika"),
-                         (k[1], "M1-Cc", r["cc"], "sinyal subgenom canephora"),
-                         (k[2], "REF", r["ref"], f"{r['ref_n']}/{r['ref_total']} lokus kontrol"),
-                         (k[3], "Rasio Cc/Ce", f"{ratio:.2f}" if ratio == ratio else "—", f"ambang {THRESH:.2f}")]:
+    k = st.columns(5)
+    for col, l, v, s in [(k[0], "Estimasi Arabika", fmt_pct(r.get("ara_pct")), "100·r₀/rasio · indikatif"),
+                         (k[1], "M1-Ce", r["ce"], "bukti subgenom Arabika"),
+                         (k[2], "M1-Cc", r["cc"], "sinyal subgenom canephora"),
+                         (k[3], "REF", r["ref"], f"{r['ref_n']}/{r['ref_total']} lokus kontrol"),
+                         (k[4], "Rasio Cc/Ce", f"{ratio:.2f}" if ratio == ratio else "—", f"ambang {THRESH:.2f}")]:
         col.markdown(f"<div class='kpi accent'><div class='l'>{l}</div><div class='v'>{v}</div><div class='s'>{s}</div></div>",
                      unsafe_allow_html=True)
     if sim is not None:
@@ -668,8 +687,9 @@ else:
             st.plotly_chart(ratio_gauge(ratio), use_container_width=True, config={"displayModeBar": False})
         with g2:
             st.plotly_chart(sim_chart(ratio), use_container_width=True, config={"displayModeBar": False})
-    st.markdown("<div class='note'>Rasio &amp; ambang berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> "
-                "dengan sampel fisik — posisi pada kurva bersifat indikatif, bukan klaim batas deteksi atau kuantifikasi.</div>",
+    st.markdown("<div class='note'>Rasio, ambang, dan estimasi % Arabika berasal dari simulasi copy-number yang <b>belum dikalibrasi</b> "
+                "dengan sampel fisik — proporsi dihitung per genom (bukan % berat), bersifat indikatif, bukan klaim batas deteksi "
+                f"atau kuantifikasi. Di atas {ARA_CAP}% selisih rasio terlalu kecil untuk dibedakan.</div>",
                 unsafe_allow_html=True)
 
     # ---------- Modul 2 ----------
