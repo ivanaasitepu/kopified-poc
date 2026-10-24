@@ -1,0 +1,9 @@
+oligo_1	oligo_2	dG_kcal_mol	status
+A1_0397:P	A1_0170:P	-10.3	RISIKO (dG < -9)
+A1_0397:P	REF_0008:P	-11.4	RISIKO (dG < -9)
+A1_0397:P	OTA-D-carb:P	-12.8	RISIKO (dG < -9)
+REF_0008:P	REF_0013:P	-11.1	RISIKO (dG < -9)
+Cc_0055:F	OTA-B-carb:P	-9.0	RISIKO (dG < -9)
+Cc_0060:F	OTA-D-2:P	-9.1	RISIKO (dG < -9)
+Cc_0094:F	OTA-B-carb:R	-9.4	RISIKO (dG < -9)
+OTA-D-carb:P	REF_0015:P	-10.6	RISIKO (dG < -9)

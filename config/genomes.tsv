@@ -1,0 +1,26 @@
+accession	assembly_label	species	group	role	download_verified	md5
+GCA_001307345.1	ASM130734v1	A. westerdijkiae	mold_target	target OTA+	True	11c091d9200dde1ee0e7a7b3dd54e8bf
+GCA_001990825.1	Aspca3	A. carbonarius	mold_target	target OTA+	True	4ee15cbf4c08189f14f39c27c26eb718
+GCA_004849945.1	AoFc	A. ochraceus	mold_target	target OTA+	True	fa7ec180c1a74c68c49227399fa0b1b1
+GCA_005784425.1	ASM578442v1	A. ochraceus	mold_target	target OTA+	True	3c3c3e5a853b6d712ac90093917fb2fd
+GCA_019976475.1	ASM1997647v1	A. westerdijkiae	mold_target	target OTA+	True	6f5ea1e4ee0b0cc129eb7d1af3bc1b28
+GCA_025594125.1	ASM2559412v1	A. ochraceus	mold_target	target OTA+	True	b3cc4d97e40938854910ae5fdecde42f
+GCA_026108165.1	ASM2610816v1	A. ochraceus	mold_target	target OTA+	True	159e53865b7cc76a45d4b499429025ed
+GCA_026259865.1	ASM2625986v1	A. westerdijkiae	mold_target	target OTA+	True	0a431c97481fc0768365d8c3f27fd78a
+GCA_030873655.1	IGA_Cara_2.4	C. arabica	arabica	target autentikasi	True	ea0efbd2fde10e006f3a9c592f0dcba0
+GCA_036785865.1	ASM3678586v1	C. canephora	canephora	eksklusi (tidak boleh hit M1-Ce)	True	e9c644bb5864659a4abcb8068c14ca55
+GCA_036785875.1	ASM3678587v1	C. eugenioides	eugenioides	donor subgenom (harus hit M1-Ce)	True	7ed7c33e3d82edb19c6816091600ff01
+GCA_037127345.1	ASM3712734v1	A. ochraceus	mold_target	target OTA+	True	1fb1c530ff572f392e542787fceece89
+GCA_047651775.1	ASM4765177v1	A. niger	mold_nontarget	non-target (OTA-)	True	44a294ea75fc69d8bc9f2d68fc2bdf0e
+GCA_051529875.1	UCR_AnigDFA-N_1.0	A. niger	mold_nontarget	non-target (OTA-)	True	f4b1370ab951e4c87b4858a1e1669f78
+GCA_900059795.1	AUK_PRJEB4211_v1	C. canephora	canephora	eksklusi (tidak boleh hit M1-Ce)	True	681a197aa9fea69461952332eec70714
+GCF_002849105.1	Aspste1	A. steynii	mold_target	target OTA+	True	ae3c08748fb68be52e9ccdbe03f03092
+GCF_003713205.1	Ceug_1.0	C. eugenioides	eugenioides	donor subgenom (harus hit M1-Ce)	True	1cb17bbf21bc274480a61a49fc438867
+GCF_003713225.1	Cara_1.0	C. arabica	arabica	target autentikasi	True	3f72ac2b8b919b33534bd995a6d6b51c
+GCF_036785885.1	Coffea_Arabica_ET-39_HiFi	C. arabica	arabica	target autentikasi	True	6bc818991d1ed9e32e9e8ff99119c4c0
+GCF_009017415.1	ASM901741v1	A. flavus	mold_nontarget	non-target (aflatoksin, bukan OTA)	True	074da738eac4d17cefbbfb845f0b8f27
+GCA_000184455.4	ASM184455v4	A. oryzae	mold_nontarget	non-target (fermentasi, non-OTA)	True	d5d0210289a60265ee2aaf9ff2ef9f45
+GCA_988135455.1	TATVAM_FUN7	A. tubingensis	mold_nontarget	non-target (umum di kopi)	True	a2198c517ba8c029c6fbfea94a047e22
+GCF_028828655.1	ASM2882865v1	P. verrucosum	mold_nontarget	OTA+ di serealia; dicatat, belum di-target panel	True	bc2dbedd168c799fcd64619e49efeca9
+GCA_051861825.1	ASM5186182v1	S. cerevisiae	microflora	mikroflora fermentasi kopi	True	c22d4e095ed898c6048c4af763663efd
+GCF_061378395.1	ASM6137839v1	L. plantarum	microflora	mikroflora fermentasi kopi	True	d458d629118c90ebfbb8c6bcbfb6264f

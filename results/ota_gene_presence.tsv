@@ -1,0 +1,10 @@
+genome	group	oatA	otaB	otaC	otaR	otaD
+A. oryzae	mold_nontarget	-	-	-	-	73%id/11%cov
+A. westerdijkiae	mold_target	100%id/100%cov	99%id/100%cov	100%id/100%cov	93%id/100%cov	100%id/87%cov
+A. carbonarius	mold_target	76%id/87%cov	64%id/65%cov	67%id/91%cov	71%id/42%cov	74%id/68%cov
+A. ochraceus	mold_target	83%id/14%cov	-	-	-	80%id/26%cov
+A. niger	mold_nontarget	-	-	-	-	-
+A. tubingensis	mold_nontarget	65%id/6%cov	-	-	-	-
+A. steynii	mold_target	83%id/100%cov	75%id/92%cov	80%id/94%cov	78%id/73%cov	85%id/100%cov
+A. flavus	mold_nontarget	-	-	-	-	73%id/11%cov
+P. verrucosum	mold_nontarget	82%id/100%cov	74%id/93%cov	80%id/95%cov	78%id/56%cov	85%id/87%cov

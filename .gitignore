@@ -1,0 +1,7 @@
+data/genomes/
+data/sra/
+output/assay1/
+output/assay2/
+__pycache__/
+*.pyc
+logs/
