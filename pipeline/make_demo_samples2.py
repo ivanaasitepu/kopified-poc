@@ -64,8 +64,9 @@ def rand_frags(seqs, n, tag, seed):
         out.append(f">{tag}_{i}\n{seqs[c][s:s+150]}")
     return out
 
-def amp_frags(r_robusta=0.0, k=5, mold=None, skip_coffee=False):
-    """fragmen amplikon dgn copy number: Ce~2(1-r)k, Cc~2(1-r)k+2rk, REF~4(1-r)k+2rk; mold: tiap amplikon 3x"""
+def amp_frags(r_robusta=0.0, k=10, mold=None, skip_coffee=False):
+    """fragmen amplikon dgn copy number: Ce~2(1-r)k, Cc~2(1-r)k+2rk, REF~4(1-r)k+2rk; mold: tiap amplikon 3x.
+    k=10 supaya 2(1-r)k bulat untuk r = 0,10/0,25/0,50 (k=5 → 7,5 dibulatkan ke 8 → blend 25% terbaca ≈80%)."""
     out = []
     n = 0
     for p in primers:
