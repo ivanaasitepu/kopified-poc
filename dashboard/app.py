@@ -359,7 +359,7 @@ def svg_ratio_scale(ratio):
     W, H, pad = 680, 92, 30
     top = max(2.5, (ratio if ratio == ratio else 0) * 1.15)
     X = lambda v: pad + (W - 2 * pad) * v / top
-    g = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Arial,sans-serif">',
+    g = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Arial,Helvetica,sans-serif">',
          f'<rect x="{pad}" y="34" width="{X(THRESH)-pad:.1f}" height="16" rx="3" fill="#DCEBE2"/>',
          f'<rect x="{X(THRESH):.1f}" y="34" width="{W-pad-X(THRESH):.1f}" height="16" rx="3" fill="#F2D6D2"/>',
          f'<line x1="{X(THRESH):.1f}" y1="26" x2="{X(THRESH):.1f}" y2="58" stroke="{C["flag"]}" stroke-width="2"/>',
@@ -392,7 +392,7 @@ def svg_sim_curve(ratio):
     ymax = max(max(ys), THRESH, ratio if ratio == ratio else 0) * 1.12
     X = lambda v: L + (W - L - R) * v / xmax
     Y = lambda v: T + (H - T - B) * (1 - v / ymax)
-    g = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Arial,sans-serif">']
+    g = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Arial,Helvetica,sans-serif">']
     for k in range(6):
         yv = ymax * k / 5
         g.append(f'<line x1="{L}" y1="{Y(yv):.1f}" x2="{W-R}" y2="{Y(yv):.1f}" stroke="#EEE9E0"/>'
@@ -446,27 +446,27 @@ def build_report(r):
     return f"""<!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Laporan QA {esc(r['report_id'])} — KopiFied</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
 <style>
   @page {{ size: A4; margin: 14mm 13mm 16mm; }}
   * {{ box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-  body {{ margin:0; background:#EDE9E2; font-family:Inter, Arial, sans-serif; color:{C['ink']}; font-size:12.5px; line-height:1.5; }}
+  body {{ margin:0; background:#EDE9E2; font-family:Arial, Helvetica, sans-serif; color:{C['ink']}; font-size:12.5px; line-height:1.5; }}
   .page {{ max-width: 860px; margin: 28px auto; background:#fff; box-shadow:0 8px 30px rgba(0,0,0,.08); }}
-  .mono {{ font-family:'JetBrains Mono', Consolas, monospace; }}
+  .mono {{ font-family:Consolas, 'Courier New', monospace; }}
   header {{ background:linear-gradient(135deg,#1E140F,#2B1D16 55%,#4A2F22); color:#F8F3EA; padding:26px 34px; display:flex; justify-content:space-between; gap:20px; }}
-  .brand {{ font-family:'Source Serif 4', Georgia, serif; font-size:26px; font-weight:700; color:#fff; }}
-  .brand small {{ display:block; font-family:Inter, Arial; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:{C['gold']}; font-weight:700; margin-top:2px; }}
-  h1.doc {{ font-family:'Source Serif 4', Georgia, serif; font-size:19px; margin:12px 0 0; color:#fff; font-weight:600; }}
+  .brand {{ font-family:Arial, Helvetica, sans-serif; font-size:26px; font-weight:700; color:#fff; }}
+  .brand small {{ display:block; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:{C['gold']}; font-weight:700; margin-top:2px; }}
+  h1.doc {{ font-family:Arial, Helvetica, sans-serif; font-size:19px; margin:12px 0 0; color:#fff; font-weight:600; }}
   .hmeta {{ text-align:right; font-size:11px; color:#DCCFBB; line-height:1.8; }}
-  .hmeta b {{ color:#fff; font-family:'JetBrains Mono', monospace; }}
+  .hmeta b {{ color:#fff; font-family:Consolas, 'Courier New', monospace; }}
   main {{ padding: 26px 34px 10px; }}
   .verdict {{ display:flex; justify-content:space-between; align-items:center; border-radius:12px; padding:18px 22px; color:#fff; background:{col[ov['code']]}; }}
   .verdict .k {{ font-size:10px; letter-spacing:2px; text-transform:uppercase; opacity:.85; font-weight:700; }}
-  .verdict .v {{ font-family:'Source Serif 4', Georgia, serif; font-size:26px; font-weight:700; }}
+  .verdict .v {{ font-family:Arial, Helvetica, sans-serif; font-size:26px; font-weight:700; }}
   .verdict .d {{ font-size:12px; opacity:.95; max-width:520px; }}
   .stamp {{ border:2px solid rgba(255,255,255,.8); border-radius:8px; padding:6px 12px; font-weight:800; letter-spacing:2px; font-size:13px; transform:rotate(-4deg); white-space:nowrap; }}
-  h2 {{ font-family:'Source Serif 4', Georgia, serif; font-size:16.5px; margin:26px 0 10px; padding-bottom:6px; border-bottom:1.5px solid {C['line']}; display:flex; gap:10px; align-items:baseline; }}
-  h2 .n {{ font-family:'JetBrains Mono', monospace; font-size:11px; color:{C['copper']}; border:1px solid {C['copper']}; border-radius:5px; padding:1px 6px; }}
+  h2 {{ font-family:Arial, Helvetica, sans-serif; font-size:16.5px; margin:26px 0 10px; padding-bottom:6px; border-bottom:1.5px solid {C['line']}; display:flex; gap:10px; align-items:baseline; }}
+  h2 .n {{ font-family:Consolas, 'Courier New', monospace; font-size:11px; color:{C['copper']}; border:1px solid {C['copper']}; border-radius:5px; padding:1px 6px; }}
   table {{ width:100%; border-collapse:collapse; }}
   .kv td {{ padding:6px 10px; border-bottom:1px solid #F1EDE6; vertical-align:top; }}
   .kv td:first-child {{ width:34%; color:{C['muted']}; font-weight:600; font-size:11.5px; }}
@@ -484,7 +484,7 @@ def build_report(r):
   .kpis {{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:6px 0 12px; }}
   .kpi {{ border:1px solid {C['line']}; border-radius:10px; padding:10px 12px; }}
   .kpi .l {{ font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:{C['muted']}; font-weight:800; }}
-  .kpi .v {{ font-family:'JetBrains Mono', monospace; font-size:20px; font-weight:700; }}
+  .kpi .v {{ font-family:Consolas, 'Courier New', monospace; font-size:20px; font-weight:700; }}
   .kpi .s {{ font-size:10.5px; color:{C['ink2']}; }}
   .fig {{ border:1px solid {C['line']}; border-radius:10px; padding:12px 14px; margin-top:10px; }}
   .cap {{ font-size:10.5px; color:{C['muted']}; margin-top:6px; }}
@@ -499,7 +499,7 @@ def build_report(r):
   .sign div {{ border-top:1px solid {C['ink2']}; padding-top:6px; font-size:10.5px; color:{C['muted']}; margin-top:44px; }}
   footer {{ padding:14px 34px 22px; font-size:10px; color:{C['muted']}; display:flex; justify-content:space-between; border-top:1px solid {C['line']}; margin-top:18px; }}
   .toolbar {{ max-width:860px; margin:16px auto -12px; text-align:right; }}
-  .toolbar button {{ background:#2B1D16; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-weight:700; cursor:pointer; font-family:Inter, Arial; }}
+  .toolbar button {{ background:#2B1D16; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-weight:700; cursor:pointer; font-family:Arial, Helvetica, sans-serif; }}
   section {{ break-inside: avoid; }}
   @media print {{ body {{ background:#fff; }} .page {{ margin:0; box-shadow:none; max-width:none; }} .toolbar {{ display:none; }} }}
 </style></head>
