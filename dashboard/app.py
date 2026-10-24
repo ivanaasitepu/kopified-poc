@@ -566,8 +566,8 @@ st.markdown(f"""
   <div class="hero-stats">
     <div class="hs"><div class="v">{n_primers}</div><div class="l">Primer dalam panel</div></div>
     <div class="hs"><div class="v">25</div><div class="l">Genom publik tervalidasi</div></div>
-    <div class="hs"><div class="v">88%</div><div class="l">Kesesuaian matriks validasi</div></div>
-    <div class="hs"><div class="v">TRL 3</div><div class="l">Tingkat kesiapan</div></div>
+    <div class="hs"><div class="v">2</div><div class="l">Modul uji sekaligus</div></div>
+    <div class="hs"><div class="v">&lt;1 dtk</div><div class="l">Waktu analisis per sampel</div></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
