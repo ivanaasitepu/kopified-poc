@@ -156,6 +156,8 @@ if os.path.exists(f"{RES}/blend_simulation.tsv"):
     R0 = float(sim.loc[sim.robusta_pct == 0, "ratio_Cc_Ce"].iloc[0])
     r25 = float(sim.loc[sim.robusta_pct == 25, "ratio_Cc_Ce"].iloc[0])
     THRESH = R0 + (r25 - R0) * 0.3
+# A1_0008 hanya teramplifikasi di genom ET-39 (0 di Cara_1.0/Cara_2.4) — tetap dilaporkan, tapi tidak dipakai untuk rasio
+RATIO_EXCLUDE = {"A1_0008"}
 ARA_CAP = 95  # di atas ini selisih rasio terlalu kecil untuk dibedakan — tampilkan sebagai "≥95%"
 
 LABELS = {
@@ -203,7 +205,8 @@ with st.sidebar:
     <div class='rule'><b>Indikasi campuran</b> — rasio Cc/Ce &gt; <span class='mono'>{THRESH:.2f}</span>.</div>
     <div class='rule'><b>Risiko OTA</b> — ≥2 marker OTA positif = FLAG; 1 marker = periksa ulang.</div>
     """, unsafe_allow_html=True)
-    st.caption("Ambang rasio diturunkan dari simulasi copy-number (r₀ + 0,3·(r₂₅ − r₀)); belum dikalibrasi lab.")
+    st.caption("Ambang rasio diturunkan dari simulasi copy-number (r₀ + 0,3·(r₂₅ − r₀)); belum dikalibrasi lab. "
+               f"Marker {', '.join(sorted(RATIO_EXCLUDE))} tidak dipakai dalam rasio (hanya teramplifikasi di sebagian genom Arabika).")
 
 # ================= HELPERS =================
 def read_fasta(src):
@@ -532,7 +535,7 @@ def build_report(r):
     <div class="kpi"><div class="l">Rasio Cc/Ce</div><div class="v">{rs}</div><div class="s">ambang {THRESH:.2f}</div></div>
   </div>
   <div class="fig">{svg_ratio_scale(ratio)}
-  <div class="cap"><b>Gambar 1.</b> Posisi rasio Cc/Ce sampel (penanda ▲) terhadap ambang keputusan. Rasio dinormalisasi per jumlah marker: (ΣCc/{r['n_cc']}) ÷ (ΣCe/{r['n_ce']}).</div></div>
+  <div class="cap"><b>Gambar 1.</b> Posisi rasio Cc/Ce sampel (penanda ▲) terhadap ambang keputusan. Rasio dinormalisasi per jumlah marker: (ΣCc/{r['n_cc']}) ÷ (ΣCe/{r['n_ce']}){'; ' + ', '.join(sorted(RATIO_EXCLUDE)) + ' tidak dihitung (tidak konsisten antar genom Arabika)' if RATIO_EXCLUDE else ''}.</div></div>
   {f'<div class="fig">{svg_sim_curve(ratio)}<div class="cap"><b>Gambar 2.</b> Kurva simulasi copy-number rasio Cc/Ce terhadap proporsi Robusta.' + (f' Posisi indikatif sampel ≈ <b>{xp:.0f}%</b> Robusta (interpolasi; bukan estimasi kuantitatif).' if xp is not None else '') + '</div></div>' if sim is not None else ''}
   </section>
 
@@ -555,7 +558,7 @@ def build_report(r):
   <ul class="rules">
     <li><b>INVALID</b> — REF, M1-Ce, dan M1-Cc seluruhnya nol.</li>
     <li><b>Bukan Arabika</b> — M1-Ce = 0.</li>
-    <li><b>Indikasi campuran Robusta</b> — rasio Cc/Ce &gt; {THRESH:.2f} (r₀ + 0,3·(r₂₅ − r₀) dari kurva simulasi).</li>
+    <li><b>Indikasi campuran Robusta</b> — rasio Cc/Ce &gt; {THRESH:.2f} (r₀ + 0,3·(r₂₅ − r₀) dari kurva simulasi). Marker {', '.join(sorted(RATIO_EXCLUDE))} tidak dipakai dalam rasio.</li>
     <li><b>Risiko OTA</b> — ≥2 marker OTA positif = FLAG; tepat 1 marker = CHECK (periksa ulang).</li>
     <li><b>Estimasi % Arabika</b> — 100 · r₀ / rasio Cc/Ce (r₀ = {R0:.2f}, rasio Arabika murni pada kurva simulasi); nilai ≥{ARA_CAP}% dilaporkan sebagai "≥{ARA_CAP}%". Indikatif, per genom (bukan % berat).</li>
   </ul></section>
@@ -604,13 +607,15 @@ if run:
         hits = {p.marker_id: count_amplicons(seqs, p.fwd, p.rev, max_mm=MAX_MM) for _, p in primers.iterrows()}
         dt = time.time() - t0
 
-    ce = sum(hits.get(m, 0) for m in primers.marker_id[primers.type == "M1-Ce"])
-    cc = sum(hits.get(m, 0) for m in primers.marker_id[primers.type == "M1-Cc"])
+    ce_ids = [m for m in primers.marker_id[primers.type == "M1-Ce"] if m not in RATIO_EXCLUDE]
+    cc_ids = [m for m in primers.marker_id[primers.type == "M1-Cc"] if m not in RATIO_EXCLUDE]
+    ce = sum(hits.get(m, 0) for m in ce_ids)
+    cc = sum(hits.get(m, 0) for m in cc_ids)
     ref_rows = primers[primers.type == "REF"]
     ref = sum(hits.get(m, 0) for m in ref_rows.marker_id)
     ref_n = sum(1 for m in ref_rows.marker_id if hits.get(m, 0) > 0)
     ota = {m: hits.get(m, 0) for m in primers.marker_id[primers.type.str.startswith("OTA")]}
-    n_ce = max(1, int((primers.type == "M1-Ce").sum())); n_cc = max(1, int((primers.type == "M1-Cc").sum()))
+    n_ce = max(1, len(ce_ids)); n_cc = max(1, len(cc_ids))
     ratio = (cc / n_cc) / (ce / n_ce) if ce else float("nan")
 
     auth = classify_auth(ce, cc, ref, ratio)

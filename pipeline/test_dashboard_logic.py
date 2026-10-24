@@ -10,6 +10,7 @@ sim = list(csv.DictReader(open(f"{BASE}/results/blend_simulation.tsv"), delimite
 r0 = [r for r in sim if r["robusta_pct"] == "0"][0]
 r25 = [r for r in sim if r["robusta_pct"] == "25"][0]
 THRESH = float(r0["ratio_Cc_Ce"]) + (float(r25["ratio_Cc_Ce"]) - float(r0["ratio_Cc_Ce"])) * 0.3
+RATIO_EXCLUDE = {"A1_0008"}  # sama dengan dashboard/app.py
 print(f"ambang rasio Cc/Ce: {THRESH:.2f}\n")
 
 def read_fasta(path):
@@ -28,11 +29,11 @@ for fn in sorted(os.listdir(f"{BASE}/dashboard/samples")):
     if not fn.endswith(".fa"): continue
     t0 = time.time()
     seqs = read_fasta(f"{BASE}/dashboard/samples/{fn}")
-    ce = sum(count_amplicons(seqs, p["fwd"], p["rev"]) for p in primers if p["type"] == "M1-Ce")
+    ce = sum(count_amplicons(seqs, p["fwd"], p["rev"]) for p in primers if p["type"] == "M1-Ce" and p["marker_id"] not in RATIO_EXCLUDE)
     cc = sum(count_amplicons(seqs, p["fwd"], p["rev"]) for p in primers if p["type"] == "M1-Cc")
     ref = sum(count_amplicons(seqs, p["fwd"], p["rev"]) for p in primers if p["type"] == "REF")
     ota = {p["marker_id"]: count_amplicons(seqs, p["fwd"], p["rev"]) for p in primers if p["type"].startswith("OTA")}
-    n_ce = max(1, sum(1 for q in primers if q["type"]=="M1-Ce")); n_cc = max(1, sum(1 for q in primers if q["type"]=="M1-Cc"))
+    n_ce = max(1, sum(1 for q in primers if q["type"]=="M1-Ce" and q["marker_id"] not in RATIO_EXCLUDE)); n_cc = max(1, sum(1 for q in primers if q["type"]=="M1-Cc"))
     ratio = (cc / n_cc) / (ce / n_ce) if ce else float("nan")
     if ref == 0 and ce == 0 and cc == 0: call1 = "INVALID"
     elif ce == 0: call1 = "FLAG bukan arabika"
