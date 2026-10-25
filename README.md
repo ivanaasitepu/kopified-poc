@@ -35,8 +35,8 @@ streamlit run dashboard/app.py
 ## Keputusan desain (dokumentasi jujur)
 
 1. **Pendekatan alignment, bukan k-mer.** Rencana utama KMC k=31; kami memakai rencana cadangan alignment (minimap2 asm5) karena keterbatasan RAM kontainer. Logika biologis identik.
-2. **P. verrucosum membawa homolog klaster OTA** (benar secara biologis — OTA+ di serealia), tetapi primer panel v0.1 tidak mengamplifikasinya (terlalu divergen dari klaster kopi). Keputusan PoC: panel fokus pada produsen OTA di kopi (seksi Circumdati + carbonarius); deteksi P. verrucosum masuk roadmap.
-3. **A. ochraceus terdeteksi parsial** (identitas tinggi, cakupan rendah) — klaster OTA-nya divergen dari westerdijkiae; primer produksi perlu query multi-spesies atau primer degenerat. Dicatat sebagai pekerjaan lanjutan.
+2. **_P. verrucosum_ membawa homolog klaster OTA** (benar secara biologis — OTA+ di serealia), tetapi primer panel v0.1 tidak mengamplifikasinya (terlalu divergen dari klaster kopi). Keputusan PoC: panel fokus pada produsen OTA di kopi (seksi Circumdati + carbonarius); deteksi P. verrucosum masuk roadmap.
+3. **_A. ochraceus_ terdeteksi parsial** (identitas tinggi, cakupan rendah) — klaster OTA-nya divergen dari westerdijkiae; primer produksi perlu query multi-spesies atau primer degenerat. Dicatat sebagai pekerjaan lanjutan.
 4. **Marker gen, bukan spesies, untuk OTA** — dalam satu spesies (A. niger) ada strain OTA+ dan OTA−; marker gen lebih dekat ke risiko toksin, tetapi tetap bukan pengukuran toksin.
 5. **M1-cp (kloroplas)** tidak dikerjakan di PoC ini — kandidat pengembangan berikutnya (sensitif untuk DNA terdegradasi, tetapi tidak bisa dipakai untuk rasio).
 
